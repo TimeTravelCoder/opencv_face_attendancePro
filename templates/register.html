@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero hero-grid">
+    <div>
+        <p class="eyebrow">Register People</p>
+        <h2>网页注册人员</h2>
+        <p>
+            支持两种方式注册人员：上传照片，或直接在网页中开启相机采集。填写姓名、性别后，系统会自动生成人员编号，
+            保存样本并立即重新训练模型。
+        </p>
+    </div>
+    <div class="hero-note">
+        <h3>编号规则</h3>
+        <p>{{ id_rule }}</p>
+        <p>本次可用编号：<strong>{{ next_person_code }}</strong></p>
+    </div>
+</section>
+
+{% if startup_error %}
+<section class="card">
+    <div class="empty-box">
+        当前模型初始化提示：{{ startup_error }}
+    </div>
+</section>
+{% endif %}
+
+<section class="card">
+    <div class="section-head">
+        <div>
+            <h3>注册新人员</h3>
+            <p class="section-subtitle">上传照片和相机采集二选一，也可以两种都使用。</p>
+        </div>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" class="register-form" id="registerForm">
+        <div class="form-grid">
+            <div>
+                <label for="personCode">人员编号</label>
+                <input id="personCode" type="text" value="{{ next_person_code }}" readonly>
+            </div>
+            <div>
+                <label for="personName">姓名</label>
+                <input id="personName" type="text" name="person_name" placeholder="例如：张三" required>
+            </div>
+            <div>
+                <label for="gender">性别</label>
+                <select id="gender" name="gender" required>
+                    <option value="男">男</option>
+                    <option value="女">女</option>
+                    <option value="其他">其他</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="method-switch" role="tablist" aria-label="注册方式">
+            <button type="button" class="method-chip is-active" data-target="uploadPanel">上传照片</button>
+            <button type="button" class="method-chip" data-target="capturePanel">网页采集</button>
+        </div>
+
+        <div class="method-panel is-active" id="uploadPanel">
+            <label for="faceImages">上传人脸图片</label>
+            <input id="faceImages" type="file" name="face_images" accept="image/*" multiple>
+            <p class="tip">建议上传 3 到 10 张清晰照片，尽量包含正脸、轻微侧脸和不同距离。</p>
+        </div>
+
+        <div class="method-panel" id="capturePanel">
+            <div class="actions">
+                <button type="button" class="btn" id="startCaptureBtn">开启采集相机</button>
+                <button type="button" class="btn btn-secondary" id="shootBtn" disabled>采集一张</button>
+                <button type="button" class="btn btn-danger" id="clearSamplesBtn">清空采集</button>
+            </div>
+
+            <div class="capture-layout">
+                <div class="video-shell is-placeholder" id="captureShell">
+                    <video id="captureVideo" autoplay playsinline muted></video>
+                    <div class="video-placeholder" id="capturePlaceholder">开启相机后在这里预览</div>
+                </div>
+
+                <div class="sample-panel">
+                    <div class="sample-head">
+                        <strong>已采集样本</strong>
+                        <span id="sampleCount">0 张</span>
+                    </div>
+                    <div class="sample-list" id="sampleList"></div>
+                </div>
+            </div>
+            <canvas id="captureCanvas" class="hidden-canvas"></canvas>
+            <input type="hidden" name="captured_images" id="capturedImagesInput" value="[]">
+            <p class="tip">建议至少采集 6 张，轻微转头或调整远近，训练效果会更稳定。</p>
+        </div>
+
+        <div class="actions">
+            <button type="submit" class="btn btn-success">保存人员并自动训练</button>
+            <a class="btn btn-secondary" href="{{ url_for('index') }}">返回签到页</a>
+        </div>
+    </form>
+</section>
+
+<section class="card">
+    <div class="section-head">
+        <div>
+            <h3>已注册人员管理</h3>
+            <p class="section-subtitle">可以直接修改姓名、性别，或删除人员、样本和相关签到记录。</p>
+        </div>
+    </div>
+    {% if people %}
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>人员编号</th>
+                    <th>姓名</th>
+                    <th>性别</th>
+                    <th>样本数</th>
+                    <th>注册时间</th>
+                    <th>管理</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for person in people %}
+                <tr>
+                    <td>{{ person["person_code"] }}</td>
+                    <td>
+                        <input type="text"
+                               name="name"
+                               value="{{ person['name'] }}"
+                               form="update-{{ person['person_code'] }}"
+                               required>
+                    </td>
+                    <td>
+                        <select name="gender" form="update-{{ person['person_code'] }}" required>
+                            <option value="男" {% if person["gender"] == "男" %}selected{% endif %}>男</option>
+                            <option value="女" {% if person["gender"] == "女" %}selected{% endif %}>女</option>
+                            <option value="其他" {% if person["gender"] == "其他" %}selected{% endif %}>其他</option>
+                            <option value="未填写" {% if person["gender"] == "未填写" %}selected{% endif %}>未填写</option>
+                        </select>
+                    </td>
+                    <td>{{ person["sample_count"] }}</td>
+                    <td>{{ person["created_at"] }}</td>
+                    <td>
+                        <div class="actions manage-actions">
+                            <form id="update-{{ person['person_code'] }}"
+                                  method="post"
+                                  action="{{ url_for('update_person', person_code=person['person_code']) }}">
+                                <button type="submit" class="btn btn-sm">保存修改</button>
+                            </form>
+                            <form method="post" action="{{ url_for('delete_person', person_code=person['person_code']) }}"
+                                  onsubmit="return confirm('确定删除该人员吗？将同时删除样本和相关签到记录。');">
+                                <button type="submit" class="btn btn-danger btn-sm">删除人员</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p>当前还没有已注册人员。</p>
+    {% endif %}
+</section>
+
+<script>
+    const chips = document.querySelectorAll(".method-chip");
+    const panels = document.querySelectorAll(".method-panel");
+
+    chips.forEach((chip) => {
+        chip.addEventListener("click", () => {
+            chips.forEach((item) => item.classList.remove("is-active"));
+            panels.forEach((panel) => panel.classList.remove("is-active"));
+            chip.classList.add("is-active");
+            document.getElementById(chip.dataset.target).classList.add("is-active");
+        });
+    });
+
+    const registerForm = document.getElementById("registerForm");
+    const captureVideo = document.getElementById("captureVideo");
+    const captureCanvas = document.getElementById("captureCanvas");
+    const captureShell = document.getElementById("captureShell");
+    const capturePlaceholder = document.getElementById("capturePlaceholder");
+    const startCaptureBtn = document.getElementById("startCaptureBtn");
+    const shootBtn = document.getElementById("shootBtn");
+    const clearSamplesBtn = document.getElementById("clearSamplesBtn");
+    const sampleList = document.getElementById("sampleList");
+    const sampleCount = document.getElementById("sampleCount");
+    const capturedImagesInput = document.getElementById("capturedImagesInput");
+    const faceImages = document.getElementById("faceImages");
+    const MAX_CAPTURE_SAMPLES = 12;
+
+    let captureStream = null;
+    let capturedImages = [];
+
+    function refreshSampleView() {
+        sampleList.innerHTML = "";
+        sampleCount.textContent = `${capturedImages.length} 张`;
+        capturedImagesInput.value = JSON.stringify(capturedImages);
+
+        capturedImages.forEach((image, index) => {
+            const item = document.createElement("div");
+            item.className = "sample-item";
+            item.innerHTML = `
+                <img src="${image}" alt="采集样本 ${index + 1}">
+                <span>样本 ${index + 1}</span>
+            `;
+            sampleList.appendChild(item);
+        });
+    }
+
+    async function startCaptureCamera() {
+        try {
+            captureStream = await navigator.mediaDevices.getUserMedia({
+                video: {facingMode: "user"},
+                audio: false
+            });
+            captureVideo.srcObject = captureStream;
+            await captureVideo.play();
+            captureShell.classList.remove("is-placeholder");
+            capturePlaceholder.style.display = "none";
+            shootBtn.disabled = false;
+        } catch (error) {
+            window.alert(`无法访问摄像头：${error.message}`);
+        }
+    }
+
+    function stopCaptureCamera() {
+        if (captureStream) {
+            captureStream.getTracks().forEach((track) => track.stop());
+            captureStream = null;
+        }
+
+        captureVideo.srcObject = null;
+        captureShell.classList.add("is-placeholder");
+        capturePlaceholder.style.display = "flex";
+        shootBtn.disabled = true;
+    }
+
+    function shootSample() {
+        if (!captureStream || captureVideo.readyState < 2) {
+            return;
+        }
+
+        if (capturedImages.length >= MAX_CAPTURE_SAMPLES) {
+            window.alert(`最多采集 ${MAX_CAPTURE_SAMPLES} 张样本，已经足够训练使用。`);
+            return;
+        }
+
+        const targetWidth = 480;
+        const scale = targetWidth / captureVideo.videoWidth;
+        const targetHeight = Math.max(360, Math.round(captureVideo.videoHeight * scale));
+
+        captureCanvas.width = targetWidth;
+        captureCanvas.height = targetHeight;
+        const context = captureCanvas.getContext("2d");
+        context.drawImage(captureVideo, 0, 0, captureCanvas.width, captureCanvas.height);
+        capturedImages.push(captureCanvas.toDataURL("image/jpeg", 0.72));
+        refreshSampleView();
+    }
+
+    function clearSamples() {
+        capturedImages = [];
+        refreshSampleView();
+    }
+
+    registerForm.addEventListener("submit", (event) => {
+        const hasUploadFiles = faceImages.files && faceImages.files.length > 0;
+        const hasCapturedImages = capturedImages.length > 0;
+
+        if (!hasUploadFiles && !hasCapturedImages) {
+            event.preventDefault();
+            window.alert("请上传照片，或先采集一些相机样本。");
+        }
+    });
+
+    startCaptureBtn.addEventListener("click", startCaptureCamera);
+    shootBtn.addEventListener("click", shootSample);
+    clearSamplesBtn.addEventListener("click", clearSamples);
+    window.addEventListener("beforeunload", stopCaptureCamera);
+</script>
+{% endblock %}

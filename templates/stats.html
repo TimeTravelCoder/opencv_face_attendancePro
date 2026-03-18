@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero hero-grid">
+    <div>
+        <p class="eyebrow">Visual Dashboard</p>
+        <h2>签到统计分析</h2>
+        <p>
+            这里把签到数据做成更适合展示的可视化看板，既能看趋势，也能看人员活跃度。
+            用在复试 PPT 截图时，信息层次会更清楚。
+        </p>
+    </div>
+    <div class="hero-note">
+        <h3>数据焦点</h3>
+        <p>最高签到日：<strong>{{ peak_day_label }}</strong></p>
+        <p>活跃度最高人员：<strong>{{ top_person_name }}</strong></p>
+    </div>
+</section>
+
+<section class="metrics-grid">
+    <article class="metric-card metric-blue">
+        <div class="metric-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M7 16V8m5 8V5m5 11v-6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg>
+        </div>
+        <div>
+            <p class="metric-label">总签到记录</p>
+            <h3>{{ total_records }}</h3>
+            <span>系统累计沉淀的数据量</span>
+        </div>
+    </article>
+
+    <article class="metric-card metric-green">
+        <div class="metric-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3 3M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg>
+        </div>
+        <div>
+            <p class="metric-label">今日签到</p>
+            <h3>{{ today_count }}</h3>
+            <span>按当天日期实时统计</span>
+        </div>
+    </article>
+
+    <article class="metric-card metric-amber">
+        <div class="metric-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19a7 7 0 1 1 14 0M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg>
+        </div>
+        <div>
+            <p class="metric-label">最活跃人员</p>
+            <h3>{{ top_person_name }}</h3>
+            <span>{{ top_person_code or "暂无编号" }} · {{ top_person_count }} 次签到</span>
+        </div>
+    </article>
+
+    <article class="metric-card metric-purple">
+        <div class="metric-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16M12 4v16M5.5 5.5l13 13M18.5 5.5l-13 13" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"/></svg>
+        </div>
+        <div>
+            <p class="metric-label">日均签到</p>
+            <h3>{{ average_daily }}</h3>
+            <span>统计周期共 {{ total_days }} 天</span>
+        </div>
+    </article>
+</section>
+
+<section class="chart-grid chart-grid-rich">
+    <div class="card chart-box chart-hero-card">
+        <div class="chart-head">
+            <div>
+                <p class="chart-kicker">Trend</p>
+                <h3>每日签到趋势</h3>
+            </div>
+            <span class="chart-chip">峰值 {{ peak_day_count }}</span>
+        </div>
+        <canvas id="dailyChart"></canvas>
+    </div>
+
+    <div class="card chart-box">
+        <div class="chart-head">
+            <div>
+                <p class="chart-kicker">Rank</p>
+                <h3>签到次数排行</h3>
+            </div>
+            <span class="chart-chip">{{ top_labels|length }} 人上榜</span>
+        </div>
+        <canvas id="topPeopleChart"></canvas>
+    </div>
+
+    <div class="card chart-box">
+        <div class="chart-head">
+            <div>
+                <p class="chart-kicker">Share</p>
+                <h3>人员签到占比</h3>
+            </div>
+            <span class="chart-chip">结构分布</span>
+        </div>
+        <canvas id="personShareChart"></canvas>
+    </div>
+
+    <div class="card insight-card">
+        <div class="chart-head">
+            <div>
+                <p class="chart-kicker">Insight</p>
+                <h3>统计摘要</h3>
+            </div>
+        </div>
+
+        <div class="insight-list">
+            <div class="insight-item">
+                <div class="insight-icon insight-blue">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15.5 9 10l3 3 8-8" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg>
+                </div>
+                <div>
+                    <strong>趋势高点</strong>
+                    <p>{{ peak_day_label }} 达到 {{ peak_day_count }} 次签到，是当前最高峰。</p>
+                </div>
+            </div>
+
+            <div class="insight-item">
+                <div class="insight-icon insight-green">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v6l4 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg>
+                </div>
+                <div>
+                    <strong>日均表现</strong>
+                    <p>在 {{ total_days }} 个统计日内，平均每天签到 {{ average_daily }} 人次。</p>
+                </div>
+            </div>
+
+            <div class="insight-item">
+                <div class="insight-icon insight-amber">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 14.8 8.7 21 9.6l-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9L12 3Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"/></svg>
+                </div>
+                <div>
+                    <strong>活跃冠军</strong>
+                    <p>{{ top_person_name }}{% if top_person_code %}（{{ top_person_code }}）{% endif %} 当前累计 {{ top_person_count }} 次签到。</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="card">
+    <div class="actions">
+        <a class="btn" href="{{ url_for('index') }}">返回首页</a>
+        <a class="btn btn-secondary" href="{{ url_for('records') }}">查看签到记录</a>
+        <a class="btn btn-success" href="{{ url_for('register_person') }}">网页注册人员</a>
+    </div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    const dailyLabels = {{ daily_labels | tojson }};
+    const dailyCounts = {{ daily_counts | tojson }};
+    const personLabels = {{ person_labels | tojson }};
+    const personCounts = {{ person_counts | tojson }};
+    const topLabels = {{ top_labels | tojson }};
+    const topCounts = {{ top_counts | tojson }};
+
+    const chartTextColor = "#334155";
+    const chartGridColor = "rgba(148, 163, 184, 0.2)";
+
+    function buildPalette(size) {
+        const palette = [
+            "rgba(29, 78, 216, 0.82)",
+            "rgba(15, 118, 110, 0.82)",
+            "rgba(245, 158, 11, 0.82)",
+            "rgba(124, 58, 237, 0.82)",
+            "rgba(14, 165, 233, 0.82)",
+            "rgba(239, 68, 68, 0.82)"
+        ];
+        return Array.from({length: size}, (_, index) => palette[index % palette.length]);
+    }
+
+    const dailyCtx = document.getElementById("dailyChart").getContext("2d");
+    const dailyGradient = dailyCtx.createLinearGradient(0, 0, 0, 320);
+    dailyGradient.addColorStop(0, "rgba(29, 78, 216, 0.35)");
+    dailyGradient.addColorStop(1, "rgba(29, 78, 216, 0.02)");
+
+    new Chart(dailyCtx, {
+        type: "line",
+        data: {
+            labels: dailyLabels,
+            datasets: [{
+                label: "每日签到人数",
+                data: dailyCounts,
+                fill: true,
+                backgroundColor: dailyGradient,
+                borderColor: "#1d4ed8",
+                borderWidth: 3,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                pointBackgroundColor: "#ffffff",
+                pointBorderColor: "#1d4ed8",
+                pointBorderWidth: 2,
+                tension: 0.35
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {display: false}
+            },
+            scales: {
+                x: {
+                    ticks: {color: chartTextColor},
+                    grid: {display: false}
+                },
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        color: chartTextColor,
+                        precision: 0
+                    },
+                    grid: {color: chartGridColor}
+                }
+            }
+        }
+    });
+
+    const topPeopleCtx = document.getElementById("topPeopleChart").getContext("2d");
+    new Chart(topPeopleCtx, {
+        type: "bar",
+        data: {
+            labels: topLabels,
+            datasets: [{
+                label: "签到次数",
+                data: topCounts,
+                borderRadius: 14,
+                borderSkipped: false,
+                backgroundColor: buildPalette(topLabels.length)
+            }]
+        },
+        options: {
+            indexAxis: "y",
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {display: false}
+            },
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    ticks: {
+                        color: chartTextColor,
+                        precision: 0
+                    },
+                    grid: {color: chartGridColor}
+                },
+                y: {
+                    ticks: {color: chartTextColor},
+                    grid: {display: false}
+                }
+            }
+        }
+    });
+
+    const shareCtx = document.getElementById("personShareChart").getContext("2d");
+    new Chart(shareCtx, {
+        type: "doughnut",
+        data: {
+            labels: personLabels,
+            datasets: [{
+                data: personCounts,
+                backgroundColor: buildPalette(personLabels.length),
+                borderColor: "#ffffff",
+                borderWidth: 3,
+                hoverOffset: 10
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: "62%",
+            plugins: {
+                legend: {
+                    position: "bottom",
+                    labels: {
+                        color: chartTextColor,
+                        usePointStyle: true,
+                        boxWidth: 10,
+                        padding: 18
+                    }
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}

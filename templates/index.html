@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero hero-grid">
+    <div>
+        <p class="eyebrow">Web Face Attendance</p>
+        <h2>网页端人脸签到</h2>
+        <p>
+            点击签到后才会打开浏览器相机进行识别。识别成功后，页面会立即展示签到人的姓名、性别、人员编号和签到时间，
+            并自动写入本地签到记录。
+        </p>
+    </div>
+    <div class="hero-note">
+        <h3>当前规则</h3>
+        <p>签到当天只记录一次，识别阈值采用 LBPH 默认训练结果。</p>
+    </div>
+</section>
+
+<section class="stats">
+    <div class="card stat-card">
+        <h3>总签到记录</h3>
+        <p class="big-number">{{ total_records }}</p>
+    </div>
+    <div class="card stat-card">
+        <h3>今日签到人数</h3>
+        <p class="big-number">{{ today_records }}</p>
+    </div>
+    <div class="card stat-card">
+        <h3>已注册人员</h3>
+        <p class="big-number">{{ registered_count }}</p>
+    </div>
+</section>
+
+<section class="card">
+    <div class="section-head">
+        <div>
+            <h3>签到识别</h3>
+            <p class="section-subtitle">点击“开始签到”后才显示相机并开始识别。</p>
+        </div>
+        <div class="actions">
+            <a class="btn btn-secondary" href="{{ url_for('register_person') }}">去注册人员</a>
+            <a class="btn btn-success" href="{{ url_for('records') }}">查看签到记录</a>
+        </div>
+    </div>
+
+    {% if model_ready %}
+    <div class="checkin-layout">
+        <div class="camera-panel">
+            <div class="actions">
+                <button type="button" class="btn" id="startCheckinBtn">开始签到</button>
+                <button type="button" class="btn btn-secondary" id="stopCheckinBtn" disabled>停止识别</button>
+            </div>
+
+            <div class="video-shell is-placeholder" id="checkinShell">
+                <video id="checkinVideo" autoplay playsinline muted></video>
+                <canvas id="checkinOverlay" class="video-overlay"></canvas>
+                <div class="video-placeholder" id="checkinPlaceholder">
+                    点击上方按钮后显示相机画面
+                </div>
+            </div>
+            <canvas id="checkinCanvas" class="hidden-canvas"></canvas>
+            <p class="tip">浏览器会请求摄像头权限。签到成功后会自动停止识别。</p>
+        </div>
+
+        <div class="result-panel" id="checkinResultCard">
+            <span class="status-pill status-idle" id="checkinStatus">待开始</span>
+            <h4 id="resultName">未识别到人员</h4>
+            <div class="result-grid">
+                <div>
+                    <span class="meta-label">姓名</span>
+                    <strong id="metaName">-</strong>
+                </div>
+                <div>
+                    <span class="meta-label">性别</span>
+                    <strong id="metaGender">-</strong>
+                </div>
+                <div>
+                    <span class="meta-label">人员编号</span>
+                    <strong id="metaCode">-</strong>
+                </div>
+                <div>
+                    <span class="meta-label">签到时间</span>
+                    <strong id="metaTime">-</strong>
+                </div>
+            </div>
+            <p class="result-message" id="checkinMessage">点击“开始签到”后进入识别状态。</p>
+            <p class="tip">识别距离越小通常说明匹配越稳定。</p>
+        </div>
+    </div>
+    {% else %}
+    <div class="empty-box">
+        当前尚未训练模型，请先到“网页注册人员”页面上传照片或采集人脸样本。注册完成后系统会自动训练，
+        然后就可以在这里进行网页端签到。
+        {% if startup_error %}
+        <br><br>当前初始化提示：{{ startup_error }}
+        {% endif %}
+    </div>
+    {% endif %}
+</section>
+
+<section class="card">
+    <div class="actions">
+        <a class="btn" href="{{ url_for('register_person') }}">网页注册人员</a>
+        <a class="btn btn-secondary" href="{{ url_for('records') }}">查看签到记录</a>
+        <a class="btn btn-success" href="{{ url_for('stats') }}">查看统计图表</a>
+        <a class="btn btn-secondary" href="{{ url_for('export_csv') }}">导出 CSV</a>
+        <a class="btn btn-success" href="{{ url_for('export_excel') }}">导出 Excel</a>
+    </div>
+</section>
+
+<section class="card">
+    <h3>最近签到记录</h3>
+    {% if recent_records %}
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>记录ID</th>
+                    <th>人员编号</th>
+                    <th>姓名</th>
+                    <th>性别</th>
+                    <th>签到时间</th>
+                    <th>签到日期</th>
+                    <th>识别距离</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in recent_records %}
+                <tr>
+                    <td>{{ row["id"] }}</td>
+                    <td>{{ row["person_code"] or "-" }}</td>
+                    <td>{{ row["name"] }}</td>
+                    <td>{{ row["gender"] or "-" }}</td>
+                    <td>{{ row["checkin_time"] }}</td>
+                    <td>{{ row["checkin_date"] }}</td>
+                    <td>{{ "%.1f"|format(row["confidence"]) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p>暂无签到记录。</p>
+    {% endif %}
+</section>
+
+{% if model_ready %}
+<script>
+    const startBtn = document.getElementById("startCheckinBtn");
+    const stopBtn = document.getElementById("stopCheckinBtn");
+    const video = document.getElementById("checkinVideo");
+    const canvas = document.getElementById("checkinCanvas");
+    const shell = document.getElementById("checkinShell");
+    const placeholder = document.getElementById("checkinPlaceholder");
+    const overlay = document.getElementById("checkinOverlay");
+    const statusEl = document.getElementById("checkinStatus");
+    const messageEl = document.getElementById("checkinMessage");
+    const nameEl = document.getElementById("resultName");
+    const metaNameEl = document.getElementById("metaName");
+    const metaGenderEl = document.getElementById("metaGender");
+    const metaCodeEl = document.getElementById("metaCode");
+    const metaTimeEl = document.getElementById("metaTime");
+
+    let mediaStream = null;
+    let checkinTimer = null;
+    let requestRunning = false;
+
+    function clearOverlay() {
+        const overlayContext = overlay.getContext("2d");
+        overlayContext.clearRect(0, 0, overlay.width, overlay.height);
+    }
+
+    function drawFaceBox(payload) {
+        clearOverlay();
+
+        if (!payload || !payload.face_box || !payload.frame_size) {
+            return;
+        }
+
+        const rect = video.getBoundingClientRect();
+        overlay.width = rect.width;
+        overlay.height = rect.height;
+
+        const scale = Math.max(
+            overlay.width / payload.frame_size.width,
+            overlay.height / payload.frame_size.height
+        );
+        const renderedWidth = payload.frame_size.width * scale;
+        const renderedHeight = payload.frame_size.height * scale;
+        const offsetX = (overlay.width - renderedWidth) / 2;
+        const offsetY = (overlay.height - renderedHeight) / 2;
+        const box = payload.face_box;
+        const overlayContext = overlay.getContext("2d");
+        overlayContext.strokeStyle = payload.ok ? "#16a34a" : "#ef4444";
+        overlayContext.lineWidth = 3;
+        overlayContext.setLineDash([]);
+        overlayContext.strokeRect(
+            box.x * scale + offsetX,
+            box.y * scale + offsetY,
+            box.w * scale,
+            box.h * scale
+        );
+    }
+
+    function setResult(statusText, cssClass, payload) {
+        statusEl.textContent = statusText;
+        statusEl.className = `status-pill ${cssClass}`;
+
+        if (payload && payload.person) {
+            nameEl.textContent = payload.person.name;
+            metaNameEl.textContent = payload.person.name || "-";
+            metaGenderEl.textContent = payload.person.gender || "-";
+            metaCodeEl.textContent = payload.person.person_code || "-";
+            metaTimeEl.textContent = payload.checkin_time || "-";
+        } else {
+            nameEl.textContent = "未识别到人员";
+            metaNameEl.textContent = "-";
+            metaGenderEl.textContent = "-";
+            metaCodeEl.textContent = "-";
+            metaTimeEl.textContent = "-";
+        }
+
+        messageEl.textContent = payload && payload.message ? payload.message : "等待识别中...";
+    }
+
+    async function stopCheckin() {
+        if (checkinTimer) {
+            clearInterval(checkinTimer);
+            checkinTimer = null;
+        }
+
+        if (mediaStream) {
+            mediaStream.getTracks().forEach((track) => track.stop());
+            mediaStream = null;
+        }
+
+        video.srcObject = null;
+        shell.classList.add("is-placeholder");
+        placeholder.style.display = "flex";
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        requestRunning = false;
+        clearOverlay();
+    }
+
+    async function recognizeFrame() {
+        if (!mediaStream || requestRunning || video.readyState < 2) {
+            return;
+        }
+
+        requestRunning = true;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const context = canvas.getContext("2d");
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const image = canvas.toDataURL("image/jpeg", 0.92);
+
+        try {
+            const response = await fetch("{{ url_for('api_checkin_recognize') }}", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({image})
+            });
+            const result = await response.json();
+            drawFaceBox(result);
+
+            if (result.status === "checked_in") {
+                setResult("签到成功", "status-success", result);
+                clearInterval(checkinTimer);
+                checkinTimer = null;
+                window.setTimeout(stopCheckin, 1200);
+            } else if (result.status === "already_checked") {
+                setResult("今日已签到", "status-warning", result);
+                clearInterval(checkinTimer);
+                checkinTimer = null;
+                window.setTimeout(stopCheckin, 1200);
+            } else if (result.ok) {
+                setResult("识别中", "status-active", result);
+            } else if (result.status === "unregistered") {
+                setResult("未注册", "status-danger", result);
+            } else {
+                setResult("识别失败", "status-warning", result);
+            }
+        } catch (error) {
+            clearOverlay();
+            setResult("请求失败", "status-danger", {message: `识别请求失败：${error.message}`});
+        } finally {
+            requestRunning = false;
+        }
+    }
+
+    async function startCheckin() {
+        try {
+            mediaStream = await navigator.mediaDevices.getUserMedia({
+                video: {facingMode: "user"},
+                audio: false
+            });
+            video.srcObject = mediaStream;
+            await video.play();
+
+            shell.classList.remove("is-placeholder");
+            placeholder.style.display = "none";
+            const rect = video.getBoundingClientRect();
+            overlay.width = rect.width;
+            overlay.height = rect.height;
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+
+            setResult("识别中", "status-active", {message: "请正对摄像头，系统正在识别..."});
+            checkinTimer = window.setInterval(recognizeFrame, 1400);
+        } catch (error) {
+            setResult("无法开启", "status-danger", {message: `无法访问摄像头：${error.message}`});
+            await stopCheckin();
+        }
+    }
+
+    startBtn.addEventListener("click", startCheckin);
+    stopBtn.addEventListener("click", stopCheckin);
+    window.addEventListener("beforeunload", stopCheckin);
+    window.addEventListener("resize", () => {
+        if (mediaStream && video.videoWidth > 0) {
+            const rect = video.getBoundingClientRect();
+            overlay.width = rect.width;
+            overlay.height = rect.height;
+        }
+    });
+</script>
+{% endif %}
+{% endblock %}

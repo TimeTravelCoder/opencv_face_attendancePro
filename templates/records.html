@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="card">
+    <div class="section-head">
+        <div>
+            <h2>签到记录</h2>
+            <p class="section-subtitle">支持按姓名、人员编号、性别和日期筛选。</p>
+        </div>
+        <div class="actions">
+            <a class="btn btn-secondary" href="{{ url_for('export_csv') }}">导出 CSV</a>
+            <a class="btn btn-success" href="{{ url_for('export_excel') }}">导出 Excel</a>
+            <a class="btn" href="{{ url_for('stats') }}">查看统计图表</a>
+        </div>
+    </div>
+
+    <form method="get" action="{{ url_for('records') }}" class="search-form search-form-wide">
+        <input type="text" name="keyword" placeholder="按姓名或人员编号搜索" value="{{ keyword }}">
+        <select name="gender">
+            <option value="">全部性别</option>
+            <option value="男" {% if gender == "男" %}selected{% endif %}>男</option>
+            <option value="女" {% if gender == "女" %}selected{% endif %}>女</option>
+            <option value="其他" {% if gender == "其他" %}selected{% endif %}>其他</option>
+            <option value="未填写" {% if gender == "未填写" %}selected{% endif %}>未填写</option>
+        </select>
+        <input type="date" name="checkin_date" value="{{ checkin_date }}">
+        <button type="submit" class="btn">搜索</button>
+        <a class="btn btn-secondary" href="{{ url_for('records') }}">重置</a>
+    </form>
+
+    {% if records %}
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>记录ID</th>
+                    <th>人员编号</th>
+                    <th>姓名</th>
+                    <th>性别</th>
+                    <th>签到时间</th>
+                    <th>签到日期</th>
+                    <th>识别距离</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in records %}
+                <tr>
+                    <td>{{ row["id"] }}</td>
+                    <td>{{ row["person_code"] or "-" }}</td>
+                    <td>{{ row["name"] }}</td>
+                    <td>{{ row["gender"] or "-" }}</td>
+                    <td>{{ row["checkin_time"] }}</td>
+                    <td>{{ row["checkin_date"] }}</td>
+                    <td>{{ "%.1f"|format(row["confidence"]) }}</td>
+                    <td>
+                        <form method="post" action="{{ url_for('delete_record', record_id=row['id']) }}"
+                              onsubmit="return confirm('确定删除这条签到记录吗？');">
+                            <button type="submit" class="btn btn-danger btn-sm">删除</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p>没有符合条件的签到记录。</p>
+    {% endif %}
+</section>
+{% endblock %}
